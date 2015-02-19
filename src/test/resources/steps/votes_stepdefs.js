@@ -4,9 +4,6 @@ var expect        = require("expect-webelements"),
     Chance        = require('chance'),
     cucumberutils = require("cucumber/utils");
 
-// Instantiate Chance so it can be used
-var chance = new Chance();
-    
 var base = $(":root").unless(".loading:visible");
 $(":root").configure()
   .waitingPreset("slow")
@@ -17,15 +14,31 @@ $(":root").configure()
     .add(minium.interactionListeners.unhandledAlert().accept())
     .add(minium.interactionListeners.waitOnTimeout().unless(base).forExistence(base).withWaitingPreset("slow"));
 
-When(/^I go to doodle with ID "(.*?)"$/, function (doodleId) {
+// some helper functions
+function openDoodle(doodleId) {
   browser.get("http://doodle.com/" + doodleId);
-});
+}
 
-When(/^I fill my name with "(.*?)"$/, function (name) {
-  $("#pname").fill(name);
-});
+function deleteEntries(entries) {
+  var entry = entries.first();
+  base.waitForExistence();
+  
+  while (entry.checkForExistence("immediate")) {
+    var deleteIcon    = base.find(".inlineDeleteIcon").leftOf(entry);
+    var confirmDelete = base.find("#btn-yes");
+    
+    entry.moveTo();
+    deleteIcon.click();
+    confirmDelete.click();
+    
+    base.waitForExistence();
+  }
+}
 
-When(/^I fill an entry with random data$/, function () {
+function fillRandomData() {
+  // Instantiate Chance so it can be used
+  var chance = new Chance();
+
   var randomName = chance.name();
   var nameFld    = $("#pname");
   var checkboxes = $(":checkbox").rightOf(nameFld); 
@@ -33,8 +46,48 @@ When(/^I fill an entry with random data$/, function () {
   
   var numSelected = chance.integer({min: 0, max: checkboxes.size() });
   for (var i = 0; i < numSelected; i++) {
-    var index = chance.integer({min: 0, max: checkboxes.size() });
+    var index = chance.integer({min: 0, max: checkboxes.size() - 1 });
     checkboxes.eq(index).check();
+  }
+}
+
+function ensureAtPoll() {
+  base.waitForExistence();
+  var returnToPoll = $("#returnToPoll");
+  if (returnToPoll.checkForExistence("immediate")) {
+    returnToPoll.click();
+  }
+}
+
+// Step definitions
+
+When(/^I'm at doodle with ID "(.*?)"$/, function (doodleId) {
+  openDoodle(doodleId);
+});
+
+When(/^I go to doodle with ID "(.*?)"$/, function (doodleId) {
+  openDoodle(doodleId);
+});
+
+When(/^I fill my name with "(.*?)"$/, function (name) {
+  $("#pname").fill(name);
+});
+
+When(/^I fill an entry with random data$/, function () {
+  ensureAtPoll();
+  fillRandomData();
+});
+
+Given(/^there are (\d+) entries with random data$/, function (numEntries) {
+  deleteEntries(base.find("div.pname"));
+  ensureAtPoll();
+  for (var i = 0; i < numEntries; i++) {
+    var saveBtn      = $("#save");
+    var returnToPoll = $("#returnToPoll");
+     
+    fillRandomData();
+    saveBtn.click();
+    returnToPoll.click();
   }
 });
 
@@ -56,24 +109,33 @@ When(/^I save it$/, function () {
 
 Then(/^I should see the following message:$/, function (msg) {
   msg.split("\n").forEach(function (line, i) {
-    expect($(".green").eq(i)).to.have.text(line);
+    expect($(".green").withText(line)).not.to.be.empty();
   });
 });
 
-Given(/^no entries for "(.*?)" exist in doodle with ID "(.*?)"$/, function (name, doodleId) {
-  browser.get("http://doodle.com/" + doodleId);
-  
-  var entry = base.find("div.pname").withText(name).first();
-  base.waitForExistence();
-  
-  while (entry.checkForExistence("immediate")) {
-    var deleteIcon    = base.find(".inlineDeleteIcon").leftOf(entry);
-    var confirmDelete = base.find("#btn-yes");
-    
-    entry.moveTo();
-    deleteIcon.click();
-    confirmDelete.click();
-    
-    base.waitForExistence();
-  }
+Then(/^I should see (\d+) entries$/, function (numEntries) {
+  var entries = base.find("div.pname");
+  expect(entries).to.have.size(numEntries);
 });
+
+Given(/^no entries for "(.*?)" exist in doodle with ID "(.*?)"$/, function (name, doodleId) {
+  openDoodle(doodleId);
+  
+  var entries = base.find("div.pname").withText(name);
+  deleteEntries(entries);
+});
+
+Given(/^no entries exist in doodle with ID "(.*?)"$/, function (doodleId) {
+  openDoodle(doodleId);
+  
+  var entries = base.find("div.pname");
+  deleteEntries(entries);
+});
+
+Given(/^I have doodle with ID "(.*?)"$/, function (name, doodleId) {
+  openDoodle(doodleId);
+  
+  var entries = base.find("div.pname").withText(name);
+  deleteEntries(entries);
+});
+
